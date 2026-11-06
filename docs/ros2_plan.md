@@ -4,7 +4,7 @@
 >
 > 현재 환경
 > - 로컬 PC: Ubuntu 24.04, ROS2 **Jazzy** 설치됨
-> - 라즈베리파이4: OS / ROS2 설치 여부 **미확인** (SSH 비밀번호 필요해서 확인 못 함)
+> - 라즈베리파이4: **Raspberry Pi OS 13 (trixie, Debian 13 기반)** 확인됨. ROS2 **미설치**
 > - 현재 코드는 `control.py` 단일 프로세스 (200Hz 루프, gpiozero PWM + smbus2 I2C)
 
 ---
@@ -134,13 +134,18 @@ rclpy.spin(node)        # 콜백은 메인 스레드에서
 
 ## 5. ROS2 설치 경로
 
-라즈베리파이 OS 에 따라 갈린다.
+**확인됨: Pi 는 Raspberry Pi OS 13 (trixie, Debian 13 기반), arm64.**
+ROS2 공식 apt 저장소는 Ubuntu 전용이라 Raspberry Pi OS 에는 Jazzy/Humble 패키지가 없다.
+선택지는 아래 세 가지.
 
-| Pi 의 OS | 방법 |
-|---|---|
-| Ubuntu 24.04 arm64 | `apt` 로 Jazzy — PC 와 같은 배포판이라 가장 깔끔 ✅ |
-| Ubuntu 22.04 arm64 | Humble (PC Jazzy 와 통신은 되지만 배포판 섞는 건 비권장) |
-| Raspberry Pi OS Bookworm | ROS2 apt 패키지 없음 → Docker `ros:jazzy-ros-base` + `--device /dev/i2c-1 --device /dev/gpiochip0` |
+| 방법 | 내용 | 평가 |
+|---|---|---|
+| **Docker (추천)** | `docker run --device /dev/i2c-1 --device /dev/gpiochip0 ... ros:jazzy-ros-base` | OS 그대로 두고 격리됨. GPIO/I2C 는 `--device` 로 컨테이너에 노출. PC 와 동일 Jazzy 라 통신 걱정 없음 ✅ |
+| Ubuntu Server 24.04 arm64 로 SD 카드 재설치 | RPi Imager 에서 OS 를 Ubuntu Server 24.04 arm64 로 교체 | `apt` 로 Jazzy 바로 설치, 가장 깔끔하지만 **재설치라 기존 설정 날아감** |
+| 소스 빌드 / RoboStack(conda) | Debian trixie 위에서 `rosdep` 으로 직접 빌드 | 가능은 하나 의존성 맞추기 번거로움, 비권장 |
+
+Docker 쪽이 **지금 설정을 안 건드리고 바로 시도해볼 수 있어 1순위**.
+단, GPIO 하드웨어 PWM 접근이 컨테이너 안에서 막히는 경우가 있어 실제로 모터가 돌아가는지는 붙여보고 확인 필요.
 
 PC 와 Pi 는 같은 `ROS_DOMAIN_ID` 만 맞추면 같은 LAN 에서 자동으로 서로 보인다.
 그러면 **제어는 Pi 에서, `rqt_plot` 으로 각도 그래프 보고 `teleop_twist_keyboard` 로 조종은 PC 에서** 하는 구성이 된다.
@@ -159,8 +164,8 @@ ROS2 와 별개 사안이지만 200Hz 제어에서는 PWM 지터가 성능에 �
 
 ## 7. 다음에 할 일
 
-- [ ] Pi 의 OS 확인 — `ssh rpi4 'grep PRETTY_NAME /etc/os-release; ls /opt/ros'`
-- [ ] 위 표에 따라 Pi 에 ROS2 설치
+- [x] Pi 의 OS 확인 — **Raspberry Pi OS 13 (trixie)** 확인됨
+- [ ] Pi 에 Docker 설치 후 `ros:jazzy-ros-base` 로 ROS2 컨테이너 기동, GPIO/I2C 장치 노출 확인
 - [ ] `balance_bot` / `balance_bot_interfaces` 패키지 생성
 - [ ] `MPU6050`, `Motor` 클래스를 모듈로 분리
 - [ ] `balance_controller` 노드 작성 (내부 루프 스레드 + cmd_vel 콜백 + 파라미터 콜백)
