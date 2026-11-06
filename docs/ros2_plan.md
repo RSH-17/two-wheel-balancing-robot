@@ -151,6 +151,72 @@ PC 와 Pi 는 같은 `ROS_DOMAIN_ID` 만 맞추면 같은 LAN 에서 자동으�
 그러면 **제어는 Pi 에서, `rqt_plot` 으로 각도 그래프 보고 `teleop_twist_keyboard` 로 조종은 PC 에서** 하는 구성이 된다.
 지금 `print` 로 찍어 보는 각도/출력을 그래프로 보게 되는 것만으로도 PID 튜닝이 훨씬 수월해진다.
 
+### 5-1. Docker 설치 절차 (Pi 에서 실행)
+
+```bash
+# 1) Docker Engine 설치
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER      # 재로그인 또는 `newgrp docker` 필요
+
+# 2) 설치 확인
+docker run hello-world
+
+# 3) GPIO/I2C 장치 경로 확인 (컨테이너 실행 전에)
+ls /dev/i2c-* /dev/gpiochip*
+groups $USER                        # i2c, gpio, dialout 포함 여부
+
+# 4) ROS2 이미지 받기 (멀티아크 — arm64 자동 선택)
+docker pull ros:jazzy-ros-base
+
+# 5) 컨테이너 테스트 실행
+docker run -it --rm \
+  --network host \
+  --device /dev/i2c-1 \
+  --device /dev/gpiochip0 \
+  -e ROS_DOMAIN_ID=0 \
+  ros:jazzy-ros-base bash
+```
+컨테이너 안에서 `source /opt/ros/jazzy/setup.bash && ros2 run demo_nodes_cpp talker`,
+PC 에서 같은 `ROS_DOMAIN_ID` 로 `ros2 run demo_nodes_py listener` 를 돌려 서로 보이는지 확인.
+안 되면 `--privileged` 로 바꿔서 일단 동작 확인 후 다시 `--device` 로 좁히는 것도 방법.
+
+영구적으로 쓸 Dockerfile 예시 (gpiozero/smbus2 는 기본 이미지에 없어서 추가 필요):
+```dockerfile
+FROM ros:jazzy-ros-base
+RUN apt-get update && apt-get install -y python3-pip i2c-tools \
+    && pip3 install --break-system-packages gpiozero smbus2 lgpio
+WORKDIR /ros2_ws
+```
+
+**가장 먼저 검증할 리스크**: GPIO 하드웨어 PWM 이 컨테이너 격리 안에서 실제로 동작하는지 미검증.
+talker/listener 데모보다 **모터 PWM 테스트를 먼저** 돌려볼 것. 안 되면 아래 Ubuntu Server 경로로 전환.
+
+### 5-2. 왜 Docker 를 선택했는가
+
+- ROS2 공식 apt 저장소는 **Ubuntu 전용**. Pi 는 Debian 기반이라 apt 로는 설치 불가능 (Ubuntu 저장소를 Debian 에 섞는 "Frankendebian" 은 의존성이 깨질 위험이 큼)
+- 남은 선택지는 OS 재설치 아니면 소스 빌드인데, 둘 다 비용이 큼: 재설치는 **지금 이미 돌아가는 I2C 설정/배선 검증/control.py 환경**을 날리고, 소스 빌드는 Pi4 에서 몇 시간 걸리고 rosdep 키가 Debian 비공식이라 패키지 매핑을 수동으로 해야 함
+- Docker 는 **호스트를 안 건드리고** PC 와 **완전히 동일한 Jazzy 환경**을 가져다 쓰는 절충안. 안 되면 컨테이너만 지우면 롤백 끝
+- 대가: GPIO/I2C 는 `--device` 로 일일이 뚫어야 하고, DDS 디스커버리 때문에 `--network host` 가 거의 필수, 그리고 위에서 말한 PWM 검증 리스크를 떠안음
+
+### 5-3. Ubuntu Server 란 (대안 경로 보충 설명)
+
+Ubuntu 의 GUI 없는 변종. 지금 Pi 에 깔린 Raspberry Pi OS 와 비교하면:
+
+| | Raspberry Pi OS (현재) | Ubuntu Server |
+|---|---|---|
+| 베이스 | Debian 13 (trixie) | Ubuntu 24.04 (noble) |
+| ROS2 apt 저장소 | ❌ | ✅ 공식 지원 |
+| GUI | 보통 있음 (Lite 판은 없음) | 없음 (서버용, 헤드리스 전제) |
+
+**주의**: Ubuntu Server 를 고른 이유는 GUI 유무가 아니라 **apt 저장소 유무**다.
+SSH 로만 접근한다면 Desktop 판이든 Server 판이든 경험상 차이는 없다 — Raspberry Pi OS 를
+Lite(GUI 없는 판)로 바꿔도 여전히 Debian 이라 ROS2 apt 문제는 그대로 남는다.
+즉 "헤드리스로 만들기"와 "ROS2 를 apt 로 깔기"는 서로 다른 문제이고,
+Ubuntu Server 가 필요한 이유는 순전히 후자다. Desktop 대신 Server 를 쓰는 이유는 그저
+200Hz 제어 루프를 돌릴 때 안 쓸 디스플레이 매니저가 Pi4 의 제한된 RAM/CPU 와
+스케줄링을 나눠 먹지 않게 하려는 것.
+
 ---
 
 ## 6. 별건이지만 관련된 메모
