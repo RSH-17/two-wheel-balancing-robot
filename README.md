@@ -106,3 +106,7 @@ python3 gyro_motor_control.py --gain 0.03
 ## 다음 단계 (미정)
 - `gyro_motor_control.py` 테스트 후 반응 방향/게인 조정
 - 필요 시 PID 기반 `control.py run` 모드로 전환해 실제 밸런싱 튜닝
+- ROS2 전환 (설계만 완료, 구현 전) → [docs/ros2_plan.md](docs/ros2_plan.md)
+
+## 설계 메모
+- [ROS2 전환 설계](docs/ros2_plan.md) — 200Hz 내부 루프는 단일 노드에 두고 ROS2는 명령/텔레메트리 껍데기로만 쓰는 이중 루프 구조, 패키지 구성, 엔코더 부재로 인한 한계, 배포판별 설치 경로
